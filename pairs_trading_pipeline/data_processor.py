@@ -1,8 +1,6 @@
 import pandas as pd
-import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-import os  
 
 class DataProcessor:
 
@@ -10,6 +8,10 @@ class DataProcessor:
         self.data = data
 
     def basic_scaler(self, df=None) -> pd.DataFrame:
+        """
+        Z-Scoring
+        """
+
         if df is None:
             df = self.data
         scaler = StandardScaler()
@@ -18,6 +20,9 @@ class DataProcessor:
         return df
     
     def scaler(self) -> pd.DataFrame:
+        """
+        Does z scoring but first removes cross-sectional mean return from each date across all columns in dataframe
+        """
         
         df = self.remove_cross_sectional_mean()
         df = df.pct_change()
@@ -39,4 +44,5 @@ class DataProcessor:
         """
         Removes the cross-sectional mean return from each date across all columns in dataframe
         """
+
         return self.data.sub(self.data.mean(axis=1), axis=0)

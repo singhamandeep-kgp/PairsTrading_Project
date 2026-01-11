@@ -15,12 +15,9 @@ def create_adjusted_close_dataset(
     data_dir='pairs_trading_pipeline/crsp_data_by_year',
     start_year=start,
     end_year=end,
-    gics_filename='gics_sector_classification.csv',
-    output_parquet='gics_sector_time_series.parquet'
-):
+    gics_filename='gics_sector_classification.csv'):
     """
     Load CRSP data for specified years, compute adjusted close, and bucket by GICS sector.
-
     """
 
     print("=" * 60)
@@ -68,7 +65,7 @@ def create_adjusted_close_dataset(
 
     # Calculate adjusted close price
     print("Calculating adjusted close prices...")
-    df_all['price'] = df_all['price'].abs()  # Make sure prices are positive
+    df_all['price'] = df_all['price'].abs() 
     df_all['adj_close'] = df_all['price'] / df_all['cum_factor_price']
     df_clean = df_all[['date', 'permno', 'adj_close', 'share_code']].copy()
     df_clean = df_clean[df_clean['share_code'].isin([10, 11])]
@@ -89,22 +86,19 @@ def create_adjusted_close_dataset(
     print(f"  Unique stocks (PERMNOs): {df_clean['permno'].nunique():,}")
     print(f"  GICS sectors represented: {df_clean['gics_sector'].nunique():,}")
     
-    
     # Create output directory for GICS-filtered Pickle files
     output_dir = os.path.join(os.getcwd(), 'pairs_trading_pipeline/GICS_Filtered_Equities')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         print(f"\nCreated output directory: {output_dir}")
 
-    # Split by GICS sector and save each as a separate Pickle file
     for sector, df_sector in df_clean.groupby('gics_sector'):
         print(f"\nProcessing GICS sector {sector}...")
         df_pivot = df_sector.pivot_table(
             index='date',
             columns='permno',
             values='adj_close',
-            aggfunc='first'
-        ).sort_index()
+            aggfunc='first').sort_index()
 
         # Save the DataFrame to a Pickle file
         sector_file = os.path.join(output_dir, f"GICS_{sector}.pkl")
