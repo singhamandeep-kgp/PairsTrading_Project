@@ -155,15 +155,6 @@ class CRSPDataPuller:
                                      output_dir='crsp_data_by_year'):
         """
         Pull daily data year by year and save separately (for very large datasets)
-        
-        Args:
-            start_year: Starting year (default: 1962)
-            end_year: Ending year (default: current year)
-            exchanges: List of exchanges
-            output_dir: Directory to save yearly files
-            
-        Returns:
-            Dictionary of DataFrames by year
         """
         if not self.db:
             if not self.connect():
@@ -260,12 +251,6 @@ class CRSPDataPuller:
     def get_stock_list(self, date='2024-01-01'):
         """
         Get list of all stocks available on a specific date
-        
-        Args:
-            date: Date to get stock list for
-            
-        Returns:
-            DataFrame with stock information
         """
         if not self.db:
             if not self.connect():
@@ -295,79 +280,51 @@ class CRSPDataPuller:
             print(f"Error: {e}")
             return None
     
+    def get_gics_sector_classification(self, output_file='/Users/amandeepsingh/Desktop/Quant codes/PairsTrading_Project/gics_sector_classification.csv'):
+        """
+        Retrieve GICS sector classification from WRDS and save to a CSV file.
+        """
+        if not self.db:
+            if not self.connect():
+                return None
+
+        print("\nRetrieving GICS sector classification from WRDS...")
+
+        query = """
+        SELECT DISTINCT
+            l.lpermno AS permno,
+            c.gsector AS gics_sector, 
+            c.gind AS gics_industry,
+            c.gsubind AS gics_subindustry
+        FROM 
+            comp.company AS c
+        INNER JOIN 
+            crsp.ccmxpf_linktable AS l
+        ON 
+            c.gvkey = l.gvkey
+        WHERE 
+            c.gsector IS NOT NULL
+            AND l.lpermno IS NOT NULL
+            AND l.linktype IN ('LU', 'LC')
+            AND l.linkprim IN ('P', 'C')
+        ORDER BY 
+            c.gsector, c.gind, c.gsubind
+        """
+
+        try:
+
+            df = self.db.raw_sql(query)
+            print(f"\nSaving GICS sector classification to {output_file}...")
+            df.to_csv(output_file, index=False)
+            print(f"✓ Data saved successfully to {output_file}")
+
+            return df
+        except Exception as e:
+            print(f"Error retrieving GICS sector classification: {e}")
+            return None
+    
     def close(self):
-        """Close WRDS connection"""
+
         if self.db:
             self.db.close()
             print("\nConnection closed.")
-
-"""
-def main():
-
-    
-    print("="*60)
-    print("CRSP DAILY DATA RETRIEVAL (1962-Present)")
-    print("="*60)
-    
-    # Initialize the data puller
-    puller = CRSPDataPuller()
-    
-    # Connect to WRDS
-    if not puller.connect():
-        print("\n" + "="*60)
-        print("WRDS SETUP REQUIRED")
-        print("="*60)
-        print("\nPlease set up WRDS credentials:")
-        print("1. Install package: pip install wrds pandas")
-        print("2. Setup credentials: python -c 'import wrds; wrds.Connection()'")
-        print("3. Enter your WRDS username and password")
-        print("\nNote: WRDS access typically requires university affiliation")
-        return
-    
-    # Option 1: Get all data in one file (1962-present)
-    print("\n\nOPTION 1: Download all data (1962-present)")
-    print("WARNING: This will be a VERY large dataset!")
-    print("Estimated size: Several GB")
-    
-    response = input("\nProceed with full download? (yes/no): ").strip().lower()
-    
-    if response == 'yes':
-        df = puller.get_daily_stock_data(
-            start_date='1962-01-01',
-            end_date=None,  # Latest available
-            exchanges=['NYSE', 'NASDAQ', 'AMEX'],
-            save_to_csv=True,
-            output_file='crsp_daily_1962_present.csv'
-        )
-        
-        if df is not None:
-            print("\n" + "="*60)
-            print("SAMPLE DATA (first 10 rows):")
-            print("="*60)
-            print(df.head(10))
-    else:
-        # Option 2: Download by years for easier management
-        print("\n\nOPTION 2: Download data by year (recommended)")
-        print("This will create separate files for each year")
-        
-        start_year = int(input("Enter start year (default 1962): ") or "1962")
-        end_year = int(input("Enter end year (default current year): ") or str(datetime.now().year))
-        
-        puller.get_daily_data_by_year_range(
-            start_year=start_year,
-            end_year=end_year,
-            exchanges=['NYSE', 'NASDAQ', 'AMEX'],
-            output_dir='crsp_data_by_year'
-        )
-    
-    # Close connection
-    puller.close()
-    
-    print("\n" + "="*60)
-    print("DONE!")
-    print("="*60)
-
-
-if __name__ == "__main__":
-    main()
-"""

@@ -6,28 +6,27 @@ import pandas as pd
 import numpy as np
 import os
 import glob
+import pickle as cp
 
-start = 2020
-end = 2022
+start = 2019
+end = 2024
 
-def create_adjusted_close_dataset(data_dir='crsp_data_by_year', start_year=start, end_year=end):
+def create_adjusted_close_dataset(
+    data_dir='pairs_trading_pipeline/crsp_data_by_year',
+    start_year=start,
+    end_year=end,
+    gics_filename='gics_sector_classification.csv',
+    output_parquet='gics_sector_time_series.parquet'
+):
     """
-    Load CRSP data for specified years and create a DataFrame with adjusted close prices
+    Load CRSP data for specified years, compute adjusted close, and bucket by GICS sector.
 
-    Args:
-        data_dir (str): Directory containing the CRSP data files
-        start_year (int): First year to include (inclusive)
-        end_year (int): Last year to include (inclusive)
-
-    Returns:
-        DataFrame with dates as index and tickers as columns (adjusted close prices)
     """
 
     print("=" * 60)
     print("CRSP ADJUSTED CLOSE PRICE AGGREGATOR")
     print("=" * 60)
 
-    # Get all CSV files and filter by year range
     all_files = sorted(glob.glob(os.path.join(data_dir, 'crsp_daily_*.csv')))
     
     if not all_files:
@@ -49,7 +48,6 @@ def create_adjusted_close_dataset(data_dir='crsp_data_by_year', start_year=start
     print(f"\nFound {len(csv_files)} files for years {start_year} to {end_year}")
     print(f"Loading data from {data_dir}...\n")
 
-    # Load all data
     all_data = []
     for file, year in csv_files:
         print(f"Loading {year}...", end=' ')
@@ -65,8 +63,6 @@ def create_adjusted_close_dataset(data_dir='crsp_data_by_year', start_year=start
     df_all = pd.concat(all_data, ignore_index=True)
 
     print(f"Total records loaded: {len(df_all):,}")
-
-    # Convert date to datetime
     print("Processing dates...")
     df_all['date'] = pd.to_datetime(df_all['date'])
 
@@ -74,52 +70,48 @@ def create_adjusted_close_dataset(data_dir='crsp_data_by_year', start_year=start
     print("Calculating adjusted close prices...")
     df_all['price'] = df_all['price'].abs()  # Make sure prices are positive
     df_all['adj_close'] = df_all['price'] / df_all['cum_factor_price']
-
-    # Keep only necessary columns
     df_clean = df_all[['date', 'permno', 'adj_close', 'share_code']].copy()
+    df_clean = df_clean[df_clean['share_code'].isin([10, 11])]
 
-    # Only keep ordinary shares
-    df_clean = df_clean[df_clean['share_code'] in ['10', '11']]
+    # Load GICS mapping 
+    gics_path = os.path.join(data_dir, gics_filename)
+    if not os.path.exists(gics_path):
+        raise FileNotFoundError(f"GICS mapping not found at {gics_path}")
+
+    gics_df = pd.read_csv(gics_path)
+    gics_df = gics_df[['permno', 'gics_sector']].dropna()
+    gics_df['gics_sector'] = gics_df['gics_sector'].astype(str)
+    df_clean = df_clean.merge(gics_df, on='permno', how='inner')
 
     print(f"\nData Summary:")
-    print(f"  Date range: {df_clean['date'].min()} to {df_clean['date'].max()}")
-    print(f"  Trading days: {df_clean['date'].nunique():,}")
-    print(f"  Unique stocks (PERMCOs): {df_clean['permno'].nunique():,}")
-    print(f"  Total price records: {len(df_clean):,}")
     print(f"  Date range of data: {df_clean['date'].min().date()} to {df_clean['date'].max().date()}")
+    print(f"  Trading days: {df_clean['date'].nunique():,}")
+    print(f"  Unique stocks (PERMNOs): {df_clean['permno'].nunique():,}")
+    print(f"  GICS sectors represented: {df_clean['gics_sector'].nunique():,}")
+    
+    
+    # Create output directory for GICS-filtered Pickle files
+    output_dir = os.path.join(os.getcwd(), 'pairs_trading_pipeline/GICS_Filtered_Equities')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        print(f"\nCreated output directory: {output_dir}")
 
-    # Pivot to wide format: dates as rows, PERMCOs as columns
-    print("\nPivoting to wide format (this may take a few minutes)...")
-    df_pivot = df_clean.pivot_table(
-        index='date',
-        columns='permno',  # Using PERMCO as the unique company identifier
-        values='adj_close',
-        aggfunc='first'  # In case of duplicates, take first
-    )
+    # Split by GICS sector and save each as a separate Pickle file
+    for sector, df_sector in df_clean.groupby('gics_sector'):
+        print(f"\nProcessing GICS sector {sector}...")
+        df_pivot = df_sector.pivot_table(
+            index='date',
+            columns='permno',
+            values='adj_close',
+            aggfunc='first'
+        ).sort_index()
 
-    print(f"\nFinal DataFrame shape: {df_pivot.shape}")
-    print(f"  Rows (dates): {len(df_pivot):,}")
-    print(f"  Columns (stocks): {len(df_pivot.columns):,}")
-
-    # Calculate data completeness
-    total_cells = df_pivot.shape[0] * df_pivot.shape[1]
-    non_null_cells = df_pivot.notna().sum().sum()
-    completeness = (non_null_cells / total_cells) * 100
-
-    print(f"\nData completeness: {completeness:.2f}%")
+        # Save the DataFrame to a Pickle file
+        sector_file = os.path.join(output_dir, f"GICS_{sector}.pkl")
+        with open(sector_file, 'wb') as f:
+            cp.dump(df_pivot, f)
+        print(f"Saved Pickle file for GICS sector {sector}: {sector_file}")
 
     print("\n" + "=" * 60)
     print("COMPLETE!")
     print("=" * 60)
-
-    return df_pivot
-
-
-def save_dataframe_pickle(df, filename):
-    """
-    Save DataFrame to a pickle file
-    Args:
-        df: DataFrame to save
-        filename: Name of the pickle file (with .pkl extension)
-    """
-    df.to_pickle(filename)
