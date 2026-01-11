@@ -99,8 +99,7 @@ def create_adjusted_close_dataset(
             columns='permno',
             values='adj_close',
             aggfunc='first').sort_index()
-
-        # Save the DataFrame to a Pickle file
+        
         sector_file = os.path.join(output_dir, f"GICS_{sector}.pkl")
         with open(sector_file, 'wb') as f:
             cp.dump(df_pivot, f)
