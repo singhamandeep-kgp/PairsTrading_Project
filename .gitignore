@@ -44,3 +44,4 @@ Thumbs.db
 
 # Data (optional - uncomment if you want to ignore CSV files)
 *.csv
+*.pkl
