@@ -45,3 +45,14 @@ Thumbs.db
 # Data (optional - uncomment if you want to ignore CSV files)
 *.csv
 *.pkl
+
+# Backtest engine scratch
+src_backtest_engine/
+src/
+
+# Ignore GICS_Filtered_* folders
+GICS_Filtered_Cluster_Pairs/
+GICS_Filtered_Equities_Prices/
+GICS_Filtered_Factor_Loadings/
+GICS_Filtered_Factor_Returns/
+GICS_Filtered_Pair_Candidates/
