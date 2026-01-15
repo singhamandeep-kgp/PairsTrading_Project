@@ -7,6 +7,11 @@ import itertools
 import numpy as np
 import pandas as pd
 from statsmodels.tsa.stattools import coint
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 @lru_cache(maxsize=None)
 def _load_log_price_series(permno: int, prices_dir: str = "GICS_Filtered_Equities_Prices") -> pd.Series:
@@ -14,25 +19,29 @@ def _load_log_price_series(permno: int, prices_dir: str = "GICS_Filtered_Equitie
     for path in sorted(glob.glob(pattern)):
         df = pd.read_pickle(path)
         if permno in df.columns:
+            logger.info("Found PERMNO %d in file %s", permno, path)
             series = df[permno].copy().sort_index().astype(float)
             return np.log(series)
+    logger.error("PERMNO %d not found in directory %s", permno, prices_dir)
     raise KeyError(f"PERMNO {permno} not found in {prices_dir}")
 
 def _align_prices(p1: pd.Series, p2: pd.Series, min_obs: int = 50) -> Optional[pd.DataFrame]:
     joined = pd.concat([p1, p2], axis=1, join="inner")
     joined = joined.replace([np.inf, -np.inf], np.nan)
     joined.columns = ["asset1", "asset2"]
+    if len(joined) < min_obs:
+        logger.warning("Aligned series has fewer than %d observations", min_obs)
+        return None
     return joined
 
 def cointegration_from_clusters(
 	                            pairs_csv_path: str,
                                 prices_dir: str = "GICS_Filtered_Equities_Prices",
 	                            significance: float = 0.05,
-	                            min_obs: int = 50) -> pd.DataFrame:
-	"""
-	Compute cointegration stats for all pairs within each OPTICS cluster.
-	"""
-
+	                            min_obs: int = 50, 
+								start_date = None,
+								end_date = None) -> pd.DataFrame:
+	logger.info("Starting cointegration computation from clusters in %s", pairs_csv_path)
 	pairs_df = pd.read_csv(pairs_csv_path)
 	results = []
 
@@ -40,6 +49,7 @@ def cointegration_from_clusters(
 	pairs_df = pairs_df[pairs_df["optics_label"] != -1]
 
 	for label, group in pairs_df.groupby("optics_label"):
+		logger.info("Processing cluster label: %d", label)
 		permnos = group["permno"].astype(int).unique()
 		# Iterate over all combinations of permnos in the cluster
 		for a, b in itertools.combinations(permnos, 2):
@@ -47,18 +57,22 @@ def cointegration_from_clusters(
 				s1 = _load_log_price_series(a, prices_dir)
 				s2 = _load_log_price_series(b, prices_dir)
 			except KeyError:
+				logger.warning("Skipping pair (%d, %d) due to missing data", a, b)
 				continue
 
 			aligned = _align_prices(s1, s2, min_obs=min_obs)
 			if aligned is None:
+				logger.warning("Skipping pair (%d, %d) due to insufficient data", a, b)
 				continue
-
+			if (start_date is not None and end_date is not None):
+				aligned = aligned.loc[start_date:end_date, ]
+			
 			# Compute cointegration both ways since Engle-Granger is not symmetric and take the lower p-value
 			try:
 				t_stat_xy, p_value_xy, crit_vals_xy = coint(aligned["asset1"], aligned["asset2"])
 				t_stat_yx, p_value_yx, crit_vals_yx = coint(aligned["asset2"], aligned["asset1"])
 			except Exception as e:
-				print(f"Error during cointegration computation: {e}")
+				logger.error("Error during cointegration computation for pair (%d, %d): %s", a, b, e)
 				continue
 
 			if p_value_xy < p_value_yx:
@@ -84,6 +98,7 @@ def cointegration_from_clusters(
 			
 	results = pd.DataFrame(results)
 	results.sort_values(by=['p_value'], ascending=True, inplace=True)
+	logger.info("Cointegration computation complete. Total pairs analyzed: %d", len(results))
 	
 	return pd.DataFrame(results)
 

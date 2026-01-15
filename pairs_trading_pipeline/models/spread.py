@@ -6,6 +6,11 @@ from pathlib import Path
 from functools import lru_cache
 from pairs_trading_pipeline.models.cointegration import _align_prices
 import statsmodels.formula.api as sm
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 class ModelSpread():
@@ -44,6 +49,7 @@ class ModelSpread():
     def compute_spread(self, prices_df, alpha, beta):
 
         prices_df["spread"] = prices_df["asset1"] - (alpha + beta * prices_df["asset2"])
+        logger.info("Computed spread for assets: alpha=%f, beta=%f", alpha, beta)
         return prices_df
     
     def compute_spread_volatility(self, spread_df, df, index):
@@ -53,6 +59,7 @@ class ModelSpread():
         sigma_change = float(spread.diff().dropna().std())
         df.at[index, "spread_sigma"] = sigma_level * np.sqrt(252)
         df.at[index, "spread_change_sigma"] = sigma_change * np.sqrt(252)
+        logger.info("Computed spread volatility for index %d: sigma_level=%f, sigma_change=%f", index, sigma_level, sigma_change)
 
     def compute_spread_half_life(self, spread_df, df, index):
 
@@ -65,9 +72,11 @@ class ModelSpread():
 
         if phi >= 0:
             df.at[index, "spread_half_life"] = np.inf
+            logger.info("Spread half-life for index %d set to infinity (phi >= 0)", index)
             return
 
         df.at[index, "spread_half_life"] = float(-np.log(2) / phi)
+        logger.info("Computed spread half-life for index %d: %f", index, df.at[index, "spread_half_life"])
         
     def hedge_ratio_ols(self, prices_df, df, index):
         
@@ -80,6 +89,7 @@ class ModelSpread():
         df.at[index, "hedge_ratio_OLS_beta"] = beta
         df.at[index, "hedge_ratio_OLS_r2"] = float(res.rsquared)
         df.at[index, "hedge_ratio_OLS_resid_std"] = float(res.resid.std()) 
+        logger.info("Computed OLS hedge ratio for index %d: alpha=%f, beta=%f", index, alpha, beta)
         return alpha, beta
 
     def compute_spread_stats(self):
@@ -102,8 +112,3 @@ class ModelSpread():
             self.compute_spread_half_life(aligned, df, index)
         
         return df
-
-
-
-
-        

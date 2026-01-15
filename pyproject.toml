@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pairs_trading_pipeline"
+version = "0.0.1"
+description = "Pairs trading project"
+requires-python = ">=3.10"
+readme = "README.md"
+dependencies = []
+
+[tool.setuptools]
+package-dir = {"" = ""}
+
+[tool.setuptools.packages.find]
+where = ["."]
