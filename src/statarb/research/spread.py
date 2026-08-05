@@ -25,7 +25,7 @@ class ModelSpread():
         self.candidates_path = candidates_path
 
     @lru_cache(maxsize=None)
-    def _load_log_price_series(self, permno: int, prices_dir: str = "GICS_Filtered_Equities_Prices", sector = None) -> pd.Series:
+    def load_log_prices_for_sector(self, permno: int, prices_dir: str = "GICS_Filtered_Equities_Prices", sector = None) -> pd.Series:
 
         prices_dir = os.path.join(os.getcwd(), prices_dir)
         file_path = os.path.join(prices_dir, f"GICS_{sector}.pkl")
@@ -107,8 +107,8 @@ class ModelSpread():
             b = row.permno2
             sector = row.GICS_Sector
 
-            s1 = self._load_log_price_series(permno = a, sector = sector)
-            s2 = self._load_log_price_series(permno = b, sector = sector)
+            s1 = self.load_log_prices_for_sector(permno = a, sector = sector)
+            s2 = self.load_log_prices_for_sector(permno = b, sector = sector)
             aligned = _align_prices(s1, s2)
 
             alpha, beta = self.hedge_ratio_ols(aligned, df, index)

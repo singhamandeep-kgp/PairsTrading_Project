@@ -112,7 +112,7 @@ class RollingPairsBacktestEngine:
         returns = adapters.scale_returns(px_pca)
         factor_returns, factor_loadings, evr = adapters.pca_on_returns(returns.tail(self.windows.pca_window))
         loadings_use = factor_loadings.iloc[:, : min(self.k_loadings, factor_loadings.shape[1])]
-        cluster_labels = adapters.optics_cluster(loadings_use, min_samples=2, max_eps=np.inf, metric="euclidean", scale=True)
+        cluster_labels = adapters.optics_cluster_adapter(loadings_use, min_samples=2, max_eps=np.inf, metric="euclidean", scale=True)
 
         candidate_pairs = self._generate_candidate_pairs(cluster_labels, loadings_use)
         pairs_screened = self._screen_pairs(candidate_pairs, px_coint, rebal_date)

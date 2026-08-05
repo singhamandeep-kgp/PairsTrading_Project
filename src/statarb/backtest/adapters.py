@@ -1,4 +1,4 @@
-﻿import os
+import os
 from typing import Tuple, Optional
 
 import pandas as pd
@@ -7,7 +7,7 @@ from statarb.research.scaling import DataProcessor
 from statarb.research.pca import apply_pca as _apply_pca
 from statarb.research.clustering import optics_cluster as _optics_cluster
 from statarb.research.cointegration import _align_prices as _align_prices
-from statarb.research.cointegration import _load_log_price_series as _load_log_price_series
+from statarb.research.cointegration import load_log_prices_by_glob as _load_log_prices_by_glob
 
 
 def load_sector_prices(sector_id: int, prices_dir: str = "GICS_Filtered_Equities_Prices") -> pd.DataFrame:
@@ -25,7 +25,7 @@ def pca_on_returns(returns: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, p
     return factor_returns, factor_loadings, pd.Series(evr)
 
 
-def optics_cluster(loadings: pd.DataFrame, **kwargs) -> pd.Series:
+def optics_cluster_adapter(loadings: pd.DataFrame, **kwargs) -> pd.Series:
     return _optics_cluster(loadings, **kwargs)
 
 
@@ -33,5 +33,5 @@ def align_prices(p1: pd.Series, p2: pd.Series, min_obs: int = 50) -> Optional[pd
     return _align_prices(p1, p2, min_obs=min_obs)
 
 
-def load_log_price_series(permno: int, prices_dir: str = "GICS_Filtered_Equities_Prices") -> pd.Series:
-    return _load_log_price_series(permno, prices_dir=prices_dir)
+def load_log_prices_by_glob(permno: int, prices_dir: str = "GICS_Filtered_Equities_Prices") -> pd.Series:
+    return _load_log_prices_by_glob(permno, prices_dir=prices_dir)

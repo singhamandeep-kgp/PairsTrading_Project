@@ -1,0 +1,64 @@
+# Install once:  pre-commit install --install-hooks
+#
+# The two hooks that would have caught the incidents this repository actually had
+# are `check-added-large-files` (sid_map.parquet, 137 KB, was sitting at the repo
+# root) and `check-no-secrets` (a live password in a config.py docstring).
+
+default_install_hook_types: [pre-commit, pre-push]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        # Deliberately aggressive. Nothing in a code repo should exceed this;
+        # test fixtures are GENERATED (see tests/fixtures/synthetic.py), not
+        # committed. 137 KB of sid_map.parquet would have been rejected.
+        args: ["--maxkb=100"]
+      - id: detect-private-key
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+      - id: no-commit-to-branch
+        args: ["--branch", "main"]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.8.1
+    hooks:
+      # Notebooks are committed (they are how a result gets demonstrated) but
+      # their outputs are stripped, so diffs stay reviewable.
+      - id: nbstripout
+
+  - repo: local
+    hooks:
+      - id: check-no-secrets
+        name: no credentials or vendor hostnames in tracked files
+        entry: python tools/check_no_secrets.py
+        language: system
+        types: [text]
+
+      - id: gitignore-anchoring
+        name: source is trackable and data is ignored
+        # Guards the exact bug that silently gitignored the entire stage-2
+        # source package: an un-anchored `curated/` matches at every depth.
+        entry: python tools/check_gitignore.py
+        language: system
+        pass_filenames: false
+
+      - id: pytest-unit
+        name: unit tests
+        entry: python -m pytest tests/unit -q
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

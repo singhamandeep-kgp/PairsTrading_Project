@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 logger = logging.getLogger(__name__)
 
 @lru_cache(maxsize=None)
-def _load_log_price_series(permno: int, prices_dir: str = "GICS_Filtered_Equities_Prices") -> pd.Series:
+def load_log_prices_by_glob(permno: int, prices_dir: str = "GICS_Filtered_Equities_Prices") -> pd.Series:
     pattern = os.path.join(prices_dir, "GICS_*.pkl")
     for path in sorted(glob.glob(pattern)):
         df = pd.read_pickle(path)
@@ -59,8 +59,8 @@ def cointegration_from_clusters(
 		# Iterate over all combinations of permnos in the cluster
 		for a, b in itertools.combinations(permnos, 2):
 			try:
-				s1 = _load_log_price_series(a, prices_dir)
-				s2 = _load_log_price_series(b, prices_dir)
+				s1 = load_log_prices_by_glob(a, prices_dir)
+				s2 = load_log_prices_by_glob(b, prices_dir)
 			except KeyError:
 				logger.warning("Skipping pair (%d, %d) due to missing data", a, b)
 				continue

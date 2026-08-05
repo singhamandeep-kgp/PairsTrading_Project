@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Windows is the development machine; Linux is the only thing that will ever
+    # catch a `\`-vs-`/` or os.getcwd() assumption. This repo shipped a hardcoded
+    # macOS path once, so cross-platform CI is not ceremony here.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.13", "3.14"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      # NOTE: no `--extra ingest`. arrow-odbc and pyodbc need a system ODBC
+      # driver the runner does not have. Installing without them is a real test:
+      # it proves the whole READ path works with core dependencies only.
+      - name: Install (core + dev, no vendor extras)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check --output-format=github .
+
+      - name: Format check
+        run: ruff format --check .
+
+      - name: Type check
+        run: mypy src
+        continue-on-error: true   # staged rollout; see pyproject overrides
+
+      - name: Tests
+        # The suite runs entirely on a synthetic Delta warehouse built in a temp
+        # directory, so it needs no FactSet access and no credentials.
+        run: pytest -q --cov=statarb --cov-report=term-missing:skip-covered
+
+  import-clean:
+    # The direct regression test for two defects:
+    #   * `import config` (bare) in ingest/factset/queries.py, which resolved only
+    #     when that directory happened to be on sys.path
+    #   * any module top-level-importing arrow_odbc / pyodbc / wrds
+    # Core dependencies ONLY -- no dev, no extras.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install -e .
+      - name: Every module imports with core deps only
+        run: |
+          python - <<'PY'
+          import importlib, pkgutil, sys
+          import statarb
+          optional = {"statarb.ingest.crsp.puller", "statarb.scripts.gics_export"}
+          bad = []
+          for m in pkgutil.walk_packages(statarb.__path__, "statarb."):
+              if m.name in optional:
+                  continue
+              try:
+                  importlib.import_module(m.name)
+              except Exception as e:
+                  bad.append(f"{m.name}: {type(e).__name__}: {e}")
+          for b in bad:
+              print("FAIL", b)
+          sys.exit(1 if bad else 0)
+          PY
+      - name: CLI is wired up
+        run: statarb --help
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: No forbidden identifiers in tracked files
+        run: git ls-files -z | xargs -0 python tools/check_no_secrets.py
+
+      - name: No oversized files
+        # Nothing in a code repository should exceed 100 KB. Test fixtures are
+        # generated, not committed. This would have blocked sid_map.parquet.
+        run: |
+          oversize=$(git ls-files -z | xargs -0 -I{} sh -c 'test -f "{}" && \
+            find "{}" -size +100k -printf "%s %p\n"' 2>/dev/null || true)
+          if [ -n "$oversize" ]; then
+            echo "Files over 100 KB are tracked:"; echo "$oversize"; exit 1
+          fi
+          echo "no tracked file exceeds 100 KB"
+
+      - name: Data directories are gitignored
+        # The bug this prevents: an UNANCHORED `curated/` pattern also matched
+        # src/statarb/curated/ and silently gitignored the entire stage-2 source
+        # package. Both directions are asserted.
+        run: |
+          fail=0
+          for p in src/statarb/curate/build.py src/statarb/data/api.py \
+                   tests/fixtures/synthetic.py; do
+            if git check-ignore -q "$p"; then
+              echo "FAIL: source file is gitignored: $p"; fail=1
+            fi
+          done
+          for p in raw/x.parquet curated/x.parquet .env; do
+            if ! git check-ignore -q "$p"; then
+              echo "FAIL: data/secret path is NOT gitignored: $p"; fail=1
+            fi
+          done
+          exit $fail
