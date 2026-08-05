@@ -1,9 +1,27 @@
-# US Equity Research Database — Technical Design Knowledge Base
+# US Equity Research Database — Technical Design Record
 
-**Project:** PairsTrading_Project data platform overhaul
-**Date:** 2026-07-29
-**Status:** Design approved, not yet implemented
-**Source:** FactSet Standard DataFeed on Microsoft SQL Server → local Parquet/DuckDB lake
+**Written:** 2026-07-29 · **Last reviewed:** 2026-08-05
+**Status:** **IMPLEMENTED.** Stages 1 and 2 shipped; see the status note below.
+**Source:** FactSet Standard DataFeed on Microsoft SQL Server → local Parquet/Delta lake
+
+> **How to read this document.** It was written *before* implementation, as a
+> design argument, and it is preserved in that form because the reasoning is the
+> point. Where reality differed from the design, the difference is recorded here
+> rather than edited away:
+>
+> | Designed | Actually shipped |
+> |---|---|
+> | DuckDB as the query engine | **Polars + Delta Lake.** DuckDB is unused; `pl.scan_delta` gave predicate pushdown without a second engine. |
+> | 2000 start, ~75.6M rows | **1995 start, 39.7M rows.** The universe was ~16.4k securities, not the ~30k estimated — roughly half. |
+> | Sector partition for clustering | **Dropped.** FactSet's point-in-time sector tables (`rbics_v1`) are empty in this feed, so sector would have injected look-ahead. See DISCOVERY_FINDINGS §11. |
+> | Total returns extracted from the vendor | **Derived locally** from raw price × cumulative factor. |
+> | Python 3.13 pinned for wheel availability | **3.14 worked.** `pyarrow`, `arrow-odbc`, `deltalake` and `polars` all had cp314 wheels. |
+>
+> **Open items are tracked in [../ROADMAP.md](../ROADMAP.md)** — that is the single
+> list. This document records what was decided and why; it is not a to-do list.
+> Empirical results from the live server are in
+> [DISCOVERY_FINDINGS.md](DISCOVERY_FINDINGS.md), which **overturns three
+> assumptions made here** and should be read alongside §13–14.
 
 This document is the complete record of the technical decisions for building the database, and *why* each was chosen over the alternative. It is written to be defensible: every claim has arithmetic or a cited mechanism behind it.
 

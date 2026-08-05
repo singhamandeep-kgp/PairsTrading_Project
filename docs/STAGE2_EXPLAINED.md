@@ -1,7 +1,12 @@
 # Stage 2 Explained — in plain language
 
-**Date:** 2026-08-04
-**Status:** partially complete. Read §2 before assuming anything works.
+**Written:** 2026-08-04 · **Last reviewed:** 2026-08-05
+**Status:** stage 2 is now **complete**. §2's status table was accurate when
+written and is now historical — see §6 for what changed.
+
+> Written for a reader who is not a database engineer. If you want the design
+> argument and the measured tradeoffs instead, read
+> [DATABASE_DESIGN.md](DATABASE_DESIGN.md).
 
 ---
 
@@ -277,21 +282,26 @@ changed rather than watching thousands of prices shift for no visible reason.
 
 ---
 
-## 6. Open gaps, stated plainly
+## 6. What has changed since this was written
 
-1. **The Delta database does not exist yet.** `schema.py` and `build.py` are the
-   next work. Everything in §5 is designed, not observable.
-2. **No `--full-refresh` flag.** Re-downloading currently needs manual manifest
-   deletion.
-3. **Delta retention must be configured at creation.** Defaults would silently
-   expire your history (§5).
-4. **Column renaming lives in `build.py`.** Raw files use short names (`c`, `v`)
-   to save network bytes; the clean database will use `px_close`, `volume`.
-5. **Volume needs converting.** Raw volume is in fractional thousands
-   (`82488.672`); the clean version will be exact whole shares (`82,488,672`).
-6. **Sector data is a snapshot, not history.** FactSet's point-in-time sector
-   tables (`rbics_v1`) are empty in your feed. The plan is to avoid needing them
-   by clustering on statistical factors rather than on vendor sector labels.
-7. **No delisting return.** FactSet has only 374 liquidation records globally, so
-   CRSP remains necessary for that one field — it is the field whose absence
-   silently inflates backtest returns.
+**Everything in §2's "not started" column has since shipped.** This document was
+written mid-build, and §5's description of Delta versioning was design rather than
+something you could go and inspect. That is no longer true, so the gaps list is
+replaced by what actually happened:
+
+| Was listed as a gap | Now |
+|---|---|
+| "The Delta database does not exist yet" | **It exists.** `curated/` holds four Delta tables: 39,677,253 price rows across 32 files, plus `dim_security`, `corporate_actions` and `calendar`. |
+| `schema.py` and `build.py` not written | Both shipped, at `src/statarb/curate/`. |
+| Delta retention must be configured | Done: `delta.logRetentionDuration` and `deletedFileRetentionDuration` set to 10 years in `schema.DELTA_PROPERTIES`, so history does not silently expire at the 7-day default. |
+| Column renaming lives in `build.py` | Done: `c` → `px_close`, `v` → `volume`. |
+| Volume needs converting | Done: `round(v × 1000)` → `int64` whole shares. Accurate to ±1,000 shares, since the extraction had already truncated the fraction server-side. |
+| No `--full-refresh` flag | **Still open.** See [../ROADMAP.md](../ROADMAP.md). |
+| Sector is a snapshot | **Still true**, and now handled by design rather than worked around: cluster on statistical factor loadings, not vendor sector labels. |
+| No delisting return | **Still true.** CRSP remains required for that one field. |
+
+Also added since: `DataAPI` (the read interface), 47 tests including the
+adversarial point-in-time suite, and the `statarb` CLI.
+
+**Open items live in [../ROADMAP.md](../ROADMAP.md)** — the single list. This
+document explains *how stage 2 works* in plain language; it is not a status board.

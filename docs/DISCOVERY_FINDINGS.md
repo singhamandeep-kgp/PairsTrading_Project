@@ -408,12 +408,18 @@ sample is cheap and closes the loop.
 
 ## Remaining open items
 
-1. **`fgp_global_prices` identifier** — which id type does it key on, and does it
-   cover US equities at all? Worth knowing for VWAP/turnover access.
-2. **Q7** — universe-count-by-year sanity check and the survivorship delta.
-   Timed out once; needs the `fsym_id`-range approach rather than a full scan.
-3. **The 27,169 `SHARE` rows with NULL `p_sec_type_code`** — securities absent
-   from `fp_sec_coverage`. Confirm they also have no price rows (in which case
-   the INNER JOIN to `span` drops them harmlessly).
-4. **OTC decision** — see §13.
-5. **Sector approach** — pick one of the three options in §11.
+**Moved to [../ROADMAP.md](../ROADMAP.md).** This document is a dated evidence log
+— what was measured against the live server, on which date. Keeping a second
+open-issues list here guaranteed it would drift out of step with the other two,
+which is exactly what happened before they were consolidated.
+
+For the record, the items that were open when this was written have since been
+resolved as follows:
+
+| Was open | Outcome |
+|---|---|
+| `fgp_global_prices` identifier | Not used. Querying AAPL's `-R` id returned zero rows, so it is not a drop-in for `fp_v2`. Recorded under "Won't do". |
+| Q7 universe-count-by-year | Done. Curve traced ~6.3k (1997) → ~4.4k (2012) → ~5.4k (2021), matching the real US listing curve. |
+| 27,169 `SHARE` rows with NULL `p_sec_type_code` | Still unconfirmed. Now in ROADMAP under Known limitations. |
+| OTC decision | Excluded. `OTC_EXCHANGE_CODES = ()`; OTC would have nearly tripled the universe with names that cannot be borrowed or shorted. |
+| Sector approach | Option 3: cluster on statistical factor loadings, removing the dependency on vendor sector labels entirely. |
