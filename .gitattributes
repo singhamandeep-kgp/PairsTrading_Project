@@ -1,0 +1,8 @@
+# Development happens on Windows, CI runs on Linux. Normalising line endings on
+# commit is what stops the runner seeing CRLF and reporting phantom diffs.
+* text=auto eol=lf
+
+*.parquet binary
+*.pkl     binary
+*.ipynb   text eol=lf
+uv.lock   text eol=lf linguist-generated=true

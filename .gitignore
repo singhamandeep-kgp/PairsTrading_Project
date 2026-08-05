@@ -1,58 +1,103 @@
-# Python
+# =============================================================================
+# ANCHORING RULE -- read before adding anything below.
+#
+# A gitignore pattern whose only slash is a trailing one matches at EVERY depth.
+# So a bare `curated/` matches `src/statarb/curated/` just as readily as the
+# top-level data directory -- which is exactly what happened here: the entire
+# stage-2 source package (build.py, factors.py, schema.py) was silently
+# gitignored and could not be committed. A bare `src/` had the same latent bug
+# for the whole source tree.
+#
+# Therefore: every pattern meant to match ONE specific directory at the repo
+# root carries a LEADING SLASH. Verify any new rule with:
+#     git check-ignore -v <a source file that must stay tracked>
+# which must print NOTHING.
+# =============================================================================
+
+# ---- Secrets ----------------------------------------------------------------
+# Git keeps every version of every file forever, so a credential committed once
+# is effectively public forever even after deletion. Rotate, don't just delete.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+
+# ---- Licensed vendor data ---------------------------------------------------
+# FactSet and CRSP licences prohibit redistribution, and pushing to GitHub --
+# even a private repo -- is redistribution. Data belongs OUTSIDE this repo
+# entirely (see FACTSET_DEST_ROOT); these anchored rules are the backstop.
+/data/
+/raw/
+/curated/
+/_manifest/
+/discovery_output/
+/sid_map.parquet
+/GICS_Filtered_Cluster_Pairs/
+/GICS_Filtered_Equities_Prices/
+/GICS_Filtered_Factor_Loadings/
+/GICS_Filtered_Factor_Returns/
+/GICS_Filtered_Pair_Candidates/
+*.duckdb
+_delta_log/
+
+# Pickles: nothing in this codebase writes them any more (the pickle-based
+# interchange format was replaced by Parquet/Delta). The rule stands as an
+# anti-regression guard -- if this ever matches something, question why.
+*.pkl
+
+# ---- Python -----------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
 sdist/
-var/
 wheels/
+develop-eggs/
+.eggs/
+*.egg
 *.egg-info/
 .installed.cfg
-*.egg
-misc.py
 
-# Virtual Environment
+# ---- Virtual environments ---------------------------------------------------
 .venv/
 venv/
 ENV/
 env/
 
-# IDE
+# ---- Tool caches ------------------------------------------------------------
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+htmlcov/
+.coverage
+.coverage.*
+
+# ---- IDE / OS ---------------------------------------------------------------
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Jupyter
-.ipynb_checkpoints/
-*.ipynb
-
-# Data (optional - uncomment if you want to ignore CSV files)
-*.csv
-*.pkl
-
-# Backtest engine scratch
-src_backtest_engine/
-src/
-
-# Ignore GICS_Filtered_* folders
-GICS_Filtered_Cluster_Pairs/
-GICS_Filtered_Equities_Prices/
-GICS_Filtered_Factor_Loadings/
-GICS_Filtered_Factor_Returns/
-GICS_Filtered_Pair_Candidates/
+# =============================================================================
+# DELIBERATELY NOT IGNORED -- each of these was previously ignored and should
+# not be, because it blocked something that belongs in version control:
+#
+#   src/          would gitignore the entire source tree
+#   *.csv         blocks committed reference data and test fixtures
+#   *.ipynb       blocks notebooks, which are how a result gets demonstrated
+#                 (outputs are stripped by nbstripout instead)
+#   *.parquet     blocks small committed test fixtures; the anchored data
+#                 directories above already cover the real data
+#   misc.py       a personal-scratch pattern has no place in a shared repo
+#   lib/ lib64/ parts/ var/ downloads/ eggs/
+#                 template noise for tooling this project does not use
+# =============================================================================
