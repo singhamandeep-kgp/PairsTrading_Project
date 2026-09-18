@@ -5,6 +5,7 @@
     statarb info                     # where is the data, what is in it
     statarb discover [Q1 Q2 ...]     # probe the vendor schema (office only)
     statarb ingest --smoke 1         # stage 1: vendor -> raw Parquet (office only)
+    statarb ingest --full-refresh    # re-download everything, ignoring the manifest
     statarb verify                   # reconcile raw against the server oracle
     statarb curate                   # stage 2: raw -> curated Delta tables
     statarb demo                     # prove the DataAPI works end to end
@@ -82,6 +83,8 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
         argv += ["--smoke", str(args.smoke)]
     elif args.execute:
         argv.append("--execute")
+    if args.full_refresh:
+        argv.append("--full-refresh")
     return extract_raw_factset.main(argv)
 
 
@@ -118,6 +121,12 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--execute", action="store_true", help="run the full extraction")
     g.add_argument("--smoke", type=int, metavar="N",
                    help="run only N price shards; do this before a full run")
+    s.add_argument("--full-refresh", action="store_true",
+                   help="re-extract every artifact, ignoring manifest completion "
+                        "state. Each shard spans the full date range, so a plain "
+                        "re-run skips new data; refresh is the update strategy. "
+                        "The manifest is kept as history. Implies a real run; "
+                        "combinable with --smoke to prove the path on N shards")
     s.set_defaults(func=_cmd_ingest)
 
     return p

@@ -14,8 +14,10 @@ extraction is effectively one-shot.
 To review WHAT is being pulled, read queries.py. To review HOW, read this.
 
 Run it:
-    python extract_raw_factset.py            # dry run: prints all SQL
-    python extract_raw_factset.py --execute  # blocked until discovery is done
+    python extract_raw_factset.py                # dry run: prints all SQL
+    python extract_raw_factset.py --execute      # resumable; skips complete shards
+    python extract_raw_factset.py --full-refresh # re-extract everything, ignoring
+                                                 # manifest completion state
 
 Nothing connects to anything while config.DRY_RUN is True.
 
@@ -157,12 +159,12 @@ def print_plan() -> None:
 # REAL RUN -- not implemented yet, by design
 # =============================================================================
 
-def run_extraction(limit_shards: int | None = None) -> None:
+def run_extraction(limit_shards: int | None = None,
+                   full_refresh: bool = False) -> None:
     """Run the real extraction. Implemented in extractor.py."""
-    # Imported lazily, not at module scope: extractor pulls in arrow_odbc, which
-    # needs a system ODBC driver that CI does not have. Keeping it out of the
-    # module-level imports is what lets the package import cleanly without the
-    # `ingest` extra installed.
+    # Imported lazily, not at module scope: keeps pyarrow out of the import path
+    # of everything that does not need it. extractor itself imports arrow_odbc
+    # lazily too, so importing it here is safe on machines with no ODBC driver.
     from . import extractor
 
     if limit_shards is not None:
@@ -177,7 +179,7 @@ def run_extraction(limit_shards: int | None = None) -> None:
         extractor.price_shards = limited    # type: ignore[assignment]
         print(f"SMOKE TEST: limiting to {limit_shards} price shard(s)\n")
 
-    extractor.run()
+    extractor.run(full_refresh=full_refresh)
 
 
 def _old_run_extraction_notes() -> None:
@@ -235,10 +237,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--smoke", type=int, metavar="N", default=None,
                         help="run only N price shards - do this before the full "
                              "run, since office access is one-shot")
+    parser.add_argument("--full-refresh", action="store_true",
+                        help="re-extract every artifact, ignoring manifest "
+                             "completion state. Re-downloading used to need "
+                             "manual manifest deletion; every shard spans the "
+                             "full date range, so a plain re-run skips new data "
+                             "as already-complete. The manifest is kept as "
+                             "history. Implies a real run; combinable with "
+                             "--smoke to prove the path on a few shards first")
     args = parser.parse_args(argv)
 
-    if args.execute or args.smoke is not None:
-        run_extraction(limit_shards=args.smoke)
+    if args.execute or args.smoke is not None or args.full_refresh:
+        run_extraction(limit_shards=args.smoke, full_refresh=args.full_refresh)
         return 0
 
     print_plan()

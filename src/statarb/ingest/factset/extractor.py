@@ -42,7 +42,10 @@ import pyarrow.parquet as pq
 
 from . import config, queries
 
-import arrow_odbc
+# arrow_odbc is imported lazily, inside the functions that use it. It needs a
+# system ODBC driver CI does not have, and a module-scope import here made the
+# whole package unimportable without the `ingest` extra - the import-clean
+# regression test (tests/unit/test_no_import_side_effects.py) catches that.
 
 _PRINT_LOCK = threading.Lock()
 _FSYM_RE = re.compile(r"^[A-Za-z0-9\-]{1,20}$")
@@ -101,6 +104,24 @@ class Manifest:
             self._done[rec["name"]] = rec
 
 
+def should_extract(name: str, manifest: "Manifest", root: Path,
+                   full_refresh: bool = False) -> bool:
+    """Is this artifact still outstanding?
+
+    Normally the manifest gates re-extraction: an artifact recorded complete
+    whose on-disk checksum still matches is skipped. `full_refresh` ignores
+    that state and re-extracts everything - the update strategy for this feed,
+    since every shard spans the full date range and a plain re-run would skip
+    new data as already-complete.
+
+    Nothing is deleted. Fresh completion records are appended to the manifest
+    and supersede the stale ones; the old records remain as audit history, and
+    sid assignments in sid_map.parquet are untouched (append-only forever -
+    renumbering would rebind every downstream artifact to the wrong stock).
+    """
+    return full_refresh or not manifest.is_complete(name, root)
+
+
 def is_transient(exc: BaseException) -> bool:
     """Should this failure be retried?
 
@@ -110,6 +131,8 @@ def is_transient(exc: BaseException) -> bool:
     a bug in the write path would otherwise cost ~25 minutes across the aux
     tables before surfacing, on the one day server access exists.
     """
+    import arrow_odbc  # lazy: needs a system ODBC driver CI does not have
+
     return isinstance(exc, arrow_odbc.Error)
 
 
@@ -153,6 +176,8 @@ def open_session(password: str, universe: list[tuple] | None = None):
     options both die with the session, and retry logic that re-issues only the
     query is the classic source of "worked for hours then failed weirdly".
     """
+    import arrow_odbc  # lazy: needs a system ODBC driver CI does not have
+
     conn = arrow_odbc.connect(
         connection_string=_conn_str_no_creds(),
         user=config.USER_NAME,
@@ -427,12 +452,13 @@ def price_shards(universe: list[tuple], per_shard: int = 400) -> list[tuple[str,
 
 
 def extract_prices(password: str, universe: list[tuple], universe_hash: str,
-                   manifest: Manifest) -> None:
+                   manifest: Manifest, full_refresh: bool = False) -> None:
     shards = price_shards(universe)
     root = config.DESTINATION_ROOT
-    todo = [s for s in shards if not manifest.is_complete(s[0], root)]
+    todo = [s for s in shards if should_extract(s[0], manifest, root, full_refresh)]
     log(f"price shards: {len(shards)} total, {len(todo)} to do, "
-        f"{len(shards) - len(todo)} already complete")
+        f"{len(shards) - len(todo)} already complete"
+        + (" [FULL REFRESH: manifest state ignored]" if full_refresh else ""))
     if not todo:
         return
 
@@ -551,12 +577,12 @@ WARNINGS: list[str] = []
 
 
 def extract_aux(password: str, universe: list[tuple], universe_hash: str,
-                manifest: Manifest) -> None:
+                manifest: Manifest, full_refresh: bool = False) -> None:
     root = config.DESTINATION_ROOT
     conn = None
     try:
         for name, fn in AUX_TABLES.items():
-            if manifest.is_complete(name, root):
+            if not should_extract(name, manifest, root, full_refresh):
                 log(f"{name}: already complete, skipping")
                 continue
             sql = fn()
@@ -603,13 +629,17 @@ def extract_aux(password: str, universe: list[tuple], universe_hash: str,
 # ORCHESTRATION
 # =============================================================================
 
-def run(password: str | None = None) -> None:
+def run(password: str | None = None, full_refresh: bool = False) -> None:
     password = password or config.get_password()
     root = config.DESTINATION_ROOT
     manifest = Manifest(config.MANIFEST_DIR / "manifest.jsonl")
 
     log("=" * 70)
     log(f"FactSet raw extraction -> {root}")
+    if full_refresh:
+        log("  FULL REFRESH: re-extracting every artifact, ignoring manifest "
+            "completion state. The manifest is NOT deleted - fresh records "
+            "supersede stale ones and the old ones remain as history.")
     log(f"  {config.safe_connection_summary()}")
     log(f"  window {config.START_DATE} .. {config.END_DATE}")
     log(f"  universe: {config.SECURITY_TYPES} on {config.US_EXCHANGE_CODES}"
@@ -623,8 +653,10 @@ def run(password: str | None = None) -> None:
     log(f"universe_hash={universe_hash[:16]}  "
         "(a change here invalidates every partition)")
 
-    extract_aux(password, universe, universe_hash, manifest)
-    extract_prices(password, universe, universe_hash, manifest)
+    extract_aux(password, universe, universe_hash, manifest,
+                full_refresh=full_refresh)
+    extract_prices(password, universe, universe_hash, manifest,
+                   full_refresh=full_refresh)
 
     el = time.time() - t0
     total = sum(p.stat().st_size for p in config.RAW_DIR.rglob("*.parquet"))
