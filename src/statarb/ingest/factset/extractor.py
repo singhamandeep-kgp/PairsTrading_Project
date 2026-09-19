@@ -104,7 +104,7 @@ class Manifest:
             self._done[rec["name"]] = rec
 
 
-def should_extract(name: str, manifest: "Manifest", root: Path,
+def should_extract(name: str, manifest: Manifest, root: Path,
                    full_refresh: bool = False) -> bool:
     """Is this artifact still outstanding?
 
