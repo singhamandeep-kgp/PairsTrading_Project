@@ -216,6 +216,9 @@ def test_extractor_run_forwards_full_refresh(monkeypatch, tmp_path):
     monkeypatch.setattr(extractor, "extract_aux", fake_aux)
     monkeypatch.setattr(extractor, "extract_prices", fake_prices)
 
-    extractor.run(password="unused", full_refresh=True)  # noqa: S106
+    # "unused" is a stand-in, not a credential: run() must not prompt when a
+    # password is supplied. The allowlist marker is the repo's per-line opt-out
+    # for exactly this case (see tools/check_no_secrets.py).
+    extractor.run(password="unused", full_refresh=True)  # noqa: S106  # pragma: allowlist secret
 
     assert seen == {"aux": True, "prices": True}
